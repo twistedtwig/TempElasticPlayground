@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp2.2</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Mortware" Version="1.5.5514.21405" />
+    <PackageReference Include="NEST" Version="6.8.0" />
+  </ItemGroup>
+
+</Project>

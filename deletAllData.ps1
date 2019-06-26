@@ -1,0 +1,1 @@
+Invoke-WebRequest -method DELETE http://localhost:9200/_all
