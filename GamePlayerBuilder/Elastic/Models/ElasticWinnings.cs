@@ -1,6 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using Nest;
 
 namespace GamePlayerBuilder.Elastic.Models
 {
@@ -8,7 +7,11 @@ namespace GamePlayerBuilder.Elastic.Models
     {
         public Guid Id { get; set; }
         public Guid HandId { get; set; }
+
+        [Keyword]
         public Guid PlayerId { get; set; }
         public decimal Value { get; set; }
+
+        public string[] Cards { get; set; }
     }
 }

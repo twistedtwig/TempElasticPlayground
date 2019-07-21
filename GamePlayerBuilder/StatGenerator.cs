@@ -1,52 +1,49 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using GamePlayerBuilder.Elastic;
+using GamePlayerBuilder.Elastic.Models;
+using GamePlayerBuilder.Helpers;
 using GamePlayerBuilder.Models;
 
 namespace GamePlayerBuilder
 {
     public class StatGenerator
     {
-        private List<User>_users;
-        private List<Game> _games;
-        private List<Hand> _hands;
-        private List<BettingRound> _rounds;
-        private List<Bet> _bets;
-        private List<Winnings> _winnings;
+        private readonly List<User> _users;
+
+        private int _hands = 0;
 
         private readonly Random _random;
 
-        private readonly PlayerGenerator _playerGenerator;
         private readonly GameGenerator _gameGenerator;
         private readonly HandGenerator _handGenerator;
         private readonly RandomBetGenerator _betGenerator;
         private readonly WinningsGenerator _winningsGenerator;
 
-        public StatGenerator()
+        public StatGenerator(List<User> users)
         {
-            _users = new List<User>();
-            _games = new List<Game>();
-            _hands = new List<Hand>();
-            _rounds = new List<BettingRound>();
-            _bets = new List<Bet>();
-            _winnings = new List<Winnings>();
-
+            _users = users;
+            
             _random = new Random();
 
-            _playerGenerator = new PlayerGenerator();
             _gameGenerator = new GameGenerator();
             _handGenerator = new HandGenerator();
             _betGenerator = new RandomBetGenerator();
             _winningsGenerator = new WinningsGenerator();
         }
-        public DataResult Setup(GameSetupInfo setup)
-        {
-            _users = _playerGenerator.Setup(setup).ToList();
 
+        public int Setup(GameSetupInfo setup)
+        {
             var weekDates = SplitIntoWeeklyDates(setup);
 
             foreach (var weekDate in weekDates)
             {
+                var userHandStats = new List<ElasticUserStat>();
+
+                Console.WriteLine("");
+                Console.WriteLine($"{setup.StartDate.Year} - {weekDate.GetIso8601WeekOfYear()} week started...");
+
                 ResetPlayersGamesPlayedCounter();
                 var maxNumberOfGamesToPlay = _random.Next(5, 500);
                 for (int i = 0; i < maxNumberOfGamesToPlay; i++)
@@ -55,7 +52,7 @@ namespace GamePlayerBuilder
                     if (shouldStopEarly) break;
 
                     var game = _gameGenerator.Create(weekDate);
-                    _games.Add(game);
+
                     ResetPlayersHandsPlayedCounter();
 
                     var previousPlayersInHand = new List<User>();
@@ -63,7 +60,9 @@ namespace GamePlayerBuilder
                     {
                         var hand = _handGenerator.Create(game, _users, previousPlayersInHand, j);
                         if (hand == null) break;
-                        _hands.Add(hand);
+
+                        _hands++;
+
                         previousPlayersInHand = hand.Players;
 
                         //play hand
@@ -71,28 +70,58 @@ namespace GamePlayerBuilder
                         for (int k = 0; k < 4; k++)
                         {
                             var round = _betGenerator.CreateRound(playersInHand, k, hand, game);
-                            _rounds.Add(round);
-                            playersInHand = round.Bets.Where(b => b.Value > 0).Select(b => b.Player).ToList();
 
-                            _bets.AddRange(round.Bets);
+                            playersInHand = round.Bets.Where(b => b.Value > 0).Select(b => b.Player).ToList();
 
                             if (playersInHand.Count == 1) break;
                         }
 
-                        _winnings.AddRange(_winningsGenerator.Create(hand, playersInHand));
+                        var winningTemp = _winningsGenerator.Create(hand, playersInHand);
+                        userHandStats.AddRange(ConvertToElasticData(hand, winningTemp));
                     }
                 }
+
+                var writer = new ElasticWriter();
+                Console.WriteLine($"Writing week {weekDate.GetIso8601WeekOfYear()}");
+                
+                writer.WriteAllData(userHandStats);
             }
 
-            return new DataResult
+            return _hands;
+        }
+
+        private List<ElasticUserStat> ConvertToElasticData(Hand hand, List<Winnings> winnings)
+        {
+            var userStats = new List<ElasticUserStat>();
+
+            foreach (var player in hand.Players)
             {
-                Users = _users,
-                Games = _games,
-                Hands = _hands,
-                Rounds = _rounds,
-                Bets = _bets,
-                Winnings = _winnings
-            };
+                var isAWinner = winnings.Any(w => w.Player.Id == player.Id);
+
+                var userStat = new ElasticUserStat
+                {
+                    HandId = hand.Id,
+                    UserId = player.Id,
+                    GameType = (int)hand.Game.Type,
+                    GroupId = null,
+                    TournamentId = null,
+                    When = hand.Started,
+                    WhenYear = hand.Started.Year,
+                    WhenMonth = hand.Started.Month,
+                    WhenDay = hand.Started.Day,
+
+                    PlayersInStart = hand.Rounds.OrderBy(x => x.Round).First().Bets.Select(b => b.Player).Distinct().Count(),
+                    PlayersAtEnd = hand.Rounds.OrderByDescending(x => x.Round).First().Bets.Select(b => b.Player).Distinct().Count(),
+                    
+                    PostSize = hand.Rounds.Sum(r => r.Bets.Sum(b => b.Value)),
+                    WinValue = isAWinner ? winnings.Where(w => w.Player.Id == player.Id).Sum(w => w.Value) : (decimal?)null,
+                    Won = isAWinner
+                };
+
+                userStats.Add(userStat);
+            }
+
+            return userStats;
         }
 
         private List<DateTime> SplitIntoWeeklyDates(GameSetupInfo setup)

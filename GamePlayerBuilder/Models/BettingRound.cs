@@ -9,11 +9,9 @@ namespace GamePlayerBuilder.Models
         {
             Bets = new List<Bet>();
         }
-
         public Guid Id { get; set; }
         public Hand Hand { get; set; }
         public int Round { get; set; }
         public List<Bet> Bets { get; set; }
-
     }
 }

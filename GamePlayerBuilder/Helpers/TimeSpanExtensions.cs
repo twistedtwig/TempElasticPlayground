@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Linq;
 
-namespace ConsoleApp
+namespace GamePlayerBuilder.Helpers
 {
     public static class TimeSpanExtensions
     {
@@ -29,6 +29,13 @@ namespace ConsoleApp
                 .Take(maxNrOfElements);
 
             return string.Join(", ", parts.Select(p => string.Format("{0} {1}{2}", p.Item2, p.Item1, p.Item2 > 1 ? "s" : string.Empty)));
+        }
+
+        public static string TimedNowToFriendlyDisplay(this DateTime startTime)
+        {
+            var endTime = DateTime.Now;
+            var timeTaken = (endTime - startTime).ToFriendlyDisplay(3);
+            return timeTaken;
         }
     }
 }
